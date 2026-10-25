@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>لعبة بطاقات تليجرام المربحة</title>
-    <!-- تضمين مكتبة تليجرام الرسمية -->
+    <!-- تصحيح وتضمين مكتبة تليجرام الرسمية -->
     <script src="https://telegram.org"></script>
     <style>
         body {
@@ -41,6 +41,7 @@
             justify-content: center;
             gap: 10px;
             margin-top: 10px;
+            min-height: 104px; /* الحفاظ على المساحة ثابتة */
         }
         .card {
             width: 70px;
@@ -54,10 +55,16 @@
             font-weight: bold;
             box-shadow: 0 4px 8px rgba(0,0,0,0.3);
             border: 2px solid #fff;
+            transition: transform 0.3s ease;
         }
         .comp-card {
             background: #0077b6;
             margin: auto;
+        }
+        .hidden-card {
+            background: #2e3852 !important;
+            border: 2px dashed #4e5d78 !important;
+            color: transparent !important;
         }
         button {
             background-color: #e43f5a;
@@ -89,6 +96,12 @@
 <div class="container">
     <h1>🏆 لعبة بطاقات الحظ</h1>
     
+    <!-- صوت اللعبة الخلفي -->
+    <!-- استبدل رابط السورس المباشر برابط أغنيتك لاحقاً -->
+    <audio id="bg-music" loop>
+        <source src="https://soundhelix.com" type="audio/mp3">
+    </audio>
+    
     <!-- قسم الإحصائيات -->
     <div class="stats">
         <div>نقاطك الكلية: <span id="total-points">0</span></div>
@@ -103,28 +116,27 @@
     <!-- منطقة اللعب -->
     <div class="card-zone">
         <h3>بطاقة الحاسوب العشوائية</h3>
-        <div class="card comp-card" id="computer-card">؟</div>
+        <div class="card comp-card hidden-card" id="computer-card">؟</div>
     </div>
 
     <div class="card-zone">
         <h3>بطاقاتك الثلاث العشوائية</h3>
         <div class="cards-container" id="player-cards">
-            <div class="card">؟</div>
-            <div class="card">؟</div>
-            <div class="card">؟</div>
+            <div class="card hidden-card">؟</div>
+            <div class="card hidden-card">؟</div>
+            <div class="card hidden-card">؟</div>
         </div>
     </div>
 
-    <div class="log" id="game-log">اضغط على الزر لبدء الجولة الأولى!</div>
+    <div class="log" id="game-log">اضغط على زر البدء لتشغيل الموسيقى وسحب البطاقات!</div>
 
     <!-- أزرار التحكم -->
-    <button id="action-btn" onclick="playNextRound()">اسحب البطاقات</button>
+    <button id="action-btn" onclick="handleActionButton()">بدء اللعبة وتفعيل الموسيقى</button>
     <button id="ad-btn" onclick="watchAdToUnlock()" style="display: none; background-color: #4ecc71;">مشاهدة إعلان للعب مجدداً (مرة كل ساعة)</button>
 
-    <!-- مكان مخصص لإعلانات البانر أو الشبكات الإعلانية -->
+    <!-- مساحة إعلانية مخصصة للبانر -->
     <div class="ad-banner" id="ad-space">
         <p>[ مساحة إعلانية مخصصة للبانر ]</p>
-        <!-- هنا سيتم لصق كود الجافاسكريبت الخاص بشبكة الإعلانات المقبولة لاحقاً -->
     </div>
 </div>
 
@@ -132,42 +144,38 @@
     // تهيئة مكتبة تليجرام
     const tg = window.Telegram.WebApp;
     tg.ready();
-    tg.expand(); // تمديد الشاشة بالكامل داخل تليجرام
+    tg.expand();
 
-    // المتغيرات الأساسية للعبة (تسترجع البيانات من المتصفح لعدم فقدان النقاط)
+    // عناصر الصوت والواجهة
+    const bgMusic = document.getElementById('bg-music');
+
     let totalPoints = parseInt(localStorage.getItem('totalPoints')) || 0;
     let freeSpins = localStorage.getItem('freeSpins') !== null ? parseInt(localStorage.getItem('freeSpins')) : 3;
     let lastAdTimestamp = localStorage.getItem('lastAdTimestamp') || 0;
 
     let currentRound = 0;
     let roundWins = 0;
-    let isGameRunning = false;
+    let isGameRunning = false; 
 
-    // تحديث الواجهة عند تحميل الصفحة
     document.getElementById('total-points').innerText = totalPoints;
     document.getElementById('free-spins').innerText = freeSpins;
 
     checkAccess();
 
-    // التحقق من صلاحية اللاعب للعب (مجاني أو انتظار ساعة للإعلان)
     function checkAccess() {
         const actionBtn = document.getElementById('action-btn');
         const adBtn = document.getElementById('ad-btn');
         const gameLog = document.getElementById('game-log');
 
-        if (currentRound > 0 && currentRound <= 5) {
-            // اللعبة جارية حالياً، لا نوقف الأزرار
-            return;
-        }
+        if (isGameRunning) return;
 
         if (freeSpins > 0) {
             actionBtn.style.display = "block";
-            actionBtn.innerText = "بدء لعبة جديدة (5 جولات)";
+            actionBtn.innerText = "بدء اللعبة (Start Game)";
             adBtn.style.display = "none";
         } else {
-            // نفدت المحاولات المجانية، نتحقق من قيود الساعة الخاصة بالإعلان
             const now = Date.now();
-            const oneHour = 60 * 60 * 1000; // بالملي ثانية
+            const oneHour = 60 * 60 * 1000;
             
             if (now - lastAdTimestamp >= oneHour) {
                 actionBtn.style.display = "none";
@@ -180,7 +188,6 @@
                 adBtn.style.display = "block";
                 adBtn.disabled = true;
                 
-                // حساب الوقت المتبقي
                 const timeLeft = Math.ceil((oneHour - (now - lastAdTimestamp)) / 1000 / 60);
                 adBtn.innerText = `يرجى الانتظار (${timeLeft} دقيقة)`;
                 gameLog.innerText = "يمكنك مشاهدة إعلان واحد فقط كل ساعة للعب.";
@@ -188,10 +195,15 @@
         }
     }
 
-    // تشغيل الجولة أو بدء اللعبة
-    function playNextRound() {
+    // إدارة وظيفة الزر الأساسي بناء على حالة اللعبة
+    function handleActionButton() {
+        // تشغيل الموسيقى مع أول ضغطة تفاعل من اللاعب (تجنباً لقيود المتصفح)
+        if (bgMusic.paused) {
+            bgMusic.play().catch(err => console.log("تحتاج لتفاعل لتشغيل الصوت: ", err));
+        }
+
         if (!isGameRunning) {
-            // خصم محاولة مجانية عند بدء لعبة جديدة كلياً
+            // خصم محاولة وبدء الجولة الأولى فوراً
             freeSpins--;
             localStorage.setItem('freeSpins', freeSpins);
             document.getElementById('free-spins').innerText = freeSpins;
@@ -200,18 +212,26 @@
             roundWins = 0;
             isGameRunning = true;
             document.getElementById('round-wins').innerText = roundWins;
+            
+            document.getElementById('action-btn').innerText = "اسحب البطاقات";
         }
+        
+        playNextRound();
+    }
 
+    // منطق تشغيل الجولات والتحقق من تطابق السحب
+    function playNextRound() {
         currentRound++;
         document.getElementById('current-round').innerText = currentRound;
 
-        // منطق البطاقات: أرقام عشوائية من 1 إلى 9
-        const compNum = Math.floor(Math.random() * 9) + 1;
-        const playerCard1 = Math.floor(Math.random() * 9) + 1;
-        const playerCard2 = Math.floor(Math.random() * 9) + 1;
-        const playerCard3 = Math.floor(Math.random() * 9) + 1;
+        // توليد أرقام عشوائية تبدأ من 0 إلى 9 للكمبيوتر واللاعب
+        const compNum = Math.floor(Math.random() * 10);
+        const playerCard1 = Math.floor(Math.random() * 10);
+        const playerCard2 = Math.floor(Math.random() * 10);
+        const playerCard3 = Math.floor(Math.random() * 10);
 
-        // عرض البطاقات على الشاشة
+        // إظهار البطاقات على الشاشة وعرض الأرقام الجديدة
+        document.getElementById('computer-card').classList.remove('hidden-card');
         document.getElementById('computer-card').innerText = compNum;
         
         const playerCardsDiv = document.getElementById('player-cards');
@@ -221,50 +241,33 @@
             <div class="card">${playerCard3}</div>
         `;
 
-        // التحقق من الفوز في الجولة (إذا تطابق رقم الحاسوب مع أي من بطاقات اللاعب)
+        // فحص توافق أرقام اللاعب مع رقم الكمبيوتر
         if (playerCard1 === compNum || playerCard2 === compNum || playerCard3 === compNum) {
             roundWins++;
             document.getElementById('round-wins').innerText = roundWins;
-            document.getElementById('game-log').innerText = `الجولة ${currentRound}: فوز! تطابقت البطاقات.`;
+            document.getElementById('game-log').innerText = `الجولة ${currentRound}: توافق! ربحت الجولة.`;
             document.getElementById('game-log').style.color = "#4ecc71";
         } else {
-            document.getElementById('game-log').innerText = `الجولة ${currentRound}: خسارة! لم تتطابق أي بطاقة.`;
+            // منطق الخسارة: رمي وتصفير بطاقات اللاعب وجعله خاسراً لهذه الجولة
+            document.getElementById('game-log').innerText = `الجولة ${currentRound}: لا يوجد توافق! خسرت بطاقاتك.`;
             document.getElementById('game-log').style.color = "#e43f5a";
+            
+            // محاكاة رمي البطاقات بإفراغ محتواها وجعلها مخفية مجدداً
+            playerCardsDiv.innerHTML = `
+                <div class="card hidden-card">؟</div>
+                <div class="card hidden-card">؟</div>
+                <div class="card hidden-card">؟</div>
+            `;
+            document.getElementById('computer-card').classList.add('hidden-card');
+            document.getElementById('computer-card').innerText = "؟";
         }
 
-        // تغيير نص الزر حسب حالة الجولات
+        // فحص حالة انتهاء اللعبة بعد 5 جولات كاملة
         if (currentRound < 5) {
             document.getElementById('action-btn').innerText = `انتقل للجولة ${currentRound + 1}`;
         } else {
-            // انتهاء الـ 5 جولات واحتساب النقاط الكلية للعبة
             isGameRunning = false;
             let earnedPoints = 0;
 
+            // تحديد الفوز الإجمالي إذا فاز بـ 3 جولات أو أكثر من أصل 5
             if (roundWins >= 3) {
-                earnedPoints = 50; // نقاط أكثر عند الفوز بغالبية الجولات
-                document.getElementById('game-log').innerText = `انتهت اللعبة! فزت بـ ${roundWins} جولات. مبروك حصلت على +50 نقطة!`;
-            } else {
-                earnedPoints = 10; // نقاط أقل عند الخسارة
-                document.getElementById('game-log').innerText = `انتهت اللعبة! فزت بـ ${roundWins} جولات فقط. حصلت على +10 نقاط.`;
-            }
-
-            totalPoints += earnedPoints;
-            localStorage.setItem('totalPoints', totalPoints);
-            document.getElementById('total-points').innerText = totalPoints;
-
-            // إعادة فحص الصلاحية للعب مجدداً
-            checkAccess();
-        }
-    }
-
-    // محاكاة مشاهدة الإعلان وفتح اللعبة مجدداً بعد الضغط
-    function watchAdToUnlock() {
-        alert("يتم الآن تشغيل الإعلان المربح... (انتظر 15 ثانية)");
-        
-        // هنا يتم وضع الكود البرمجي للـ SDK الخاص بشركة الإعلانات المستضافة (مثل AdsGram أو Monetag)
-        // عند اكتمال عرض الفيديو بنجاح، يتم تشغيل الكود التالي:
-        
-        setTimeout(() => {
-            alert("شكراً لمشاهدة الإعلان! تم منحك محاولة لعب مجانية جديدة.");
-            
-            // تحديث وقت الإعلان الأخير إلى الوقت الحالي لمنع مشاهدة إعلان آخر قبل مرور ساعة
